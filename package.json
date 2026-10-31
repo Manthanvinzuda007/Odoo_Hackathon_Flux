@@ -1,0 +1,35 @@
+{
+  "name": "brightloop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Brightloop Subscription Management System",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "dev:api": "pnpm --filter @brightloop/api run dev",
+    "dev:web": "pnpm --filter @brightloop/web run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter @brightloop/web run test:e2e",
+    "db:generate": "pnpm --filter @brightloop/api run db:generate",
+    "db:migrate": "pnpm --filter @brightloop/api run db:migrate",
+    "db:seed": "pnpm --filter @brightloop/api run db:seed",
+    "db:studio": "pnpm --filter @brightloop/api run db:studio",
+    "db:push": "pnpm --filter @brightloop/api run db:push",
+    "worker": "pnpm --filter @brightloop/api run worker",
+    "clean": "pnpm -r exec rm -rf dist node_modules .turbo",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "prisma": "5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0"
+  }
+}
