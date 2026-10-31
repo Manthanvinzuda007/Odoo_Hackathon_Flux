@@ -1,460 +1,993 @@
-# ⚡ Brightloop — Enterprise Subscription Management & Recurring Billing System
+# ⚡ Brightloop
 
-> **Brightloop** is a full-stack, production-grade subscription management and recurring billing platform engineered for high-concurrency SaaS businesses. Built with native Indian Rupee (INR - ₹) financial semantics, automated recurring billing engines, atomic sequence generation, immutable audit logging, and strict role-based customer data isolation.
+### Enterprise Subscription Management & Recurring Billing Platform
 
----
-
-## 📑 Table of Contents
-
-1. [Features & Capabilities](#-features--capabilities)
-2. [Tech Stack](#-tech-stack)
-3. [Architecture Overview](#-architecture-overview)
-4. [Prerequisites & System Requirements](#-prerequisites--system-requirements)
-5. [Step-by-Step Installation Guide](#-step-by-step-installation-guide)
-6. [Environment Variables Configuration](#-environment-variables-configuration)
-7. [Database Setup, Migration & Seeding](#-database-setup-migration--seeding)
-8. [How to Run the Application](#-how-to-run-the-application)
-9. [Pre-configured Demo Accounts & Credentials](#-pre-configured-demo-accounts--credentials)
-10. [End-to-End System Workflows](#-end-to-end-system-workflows)
-11. [Financial Calculation & Money Rules](#-financial-calculation--money-rules)
-12. [API Documentation & Swagger](#-api-documentation--swagger)
-13. [Running Tests & Quality Checks](#-running-tests--quality-checks)
-14. [Troubleshooting & FAQ](#-troubleshooting--faq)
+> **Brightloop** is a production-grade, full-stack subscription management and recurring billing platform designed for high-concurrency SaaS businesses.
+>
+> It provides secure authentication, multi-role access control, recurring billing automation, INR-native financial calculations, subscription lifecycle management, transactional payments, customer self-service, analytics, email notifications, and immutable audit logging.
 
 ---
 
-## 🚀 Features & Capabilities
+## 📌 Overview
 
-- **🔐 Enterprise Authentication:**
-  - Memory-hard **Argon2id** password hashing.
-  - JWT access tokens (15-min TTL) with single-use refresh token rotation stored in PostgreSQL.
-  - **Account Lockout Policy:** Protects against brute-force attacks by locking user accounts after 5 consecutive failed attempts for 15 minutes.
-  - **Token Theft / Replay Protection:** Re-using an old refresh token automatically invalidates all active sessions for that user.
+Brightloop is built as a modern TypeScript monorepo with a **NestJS backend**, **React frontend**, **PostgreSQL database**, **Prisma ORM**, and **Redis/BullMQ** infrastructure.
 
-- **👥 Multi-Tenant Role Isolation:**
-  - **ADMIN:** Complete system oversight, staff administration, recurring billing runner, system settings, and immutable audit trail.
-  - **STAFF:** Day-to-day operations (customer management, products, plans, quotes, subscriptions, payments).
-  - **CUSTOMER:** Secure Self-Service Portal (`/portal`). Customers can **only** access their own subscriptions, invoices, quotes, and payment receipts. Backend strictly blocks cross-customer data leakage with `403 Forbidden`.
+The platform is designed around several core principles:
 
-- **💰 100% Accurate Indian Rupee (INR) Money Engine:**
-  - **Zero floating-point arithmetic:** All monetary amounts are stored as 64-bit integer **paise** ($1\text{ INR} = 100\text{ paise}$).
-  - **Basis point tax & discount calculation:** Rates stored as integer basis points ($18.00\% = 1800\text{ bps}$).
-  - **Indian Number Formatting:** Displayed natively as `₹1,25,000.00` and `₹1,00,00,000.00` (Crores & Lakhs).
-  - **Server-Side Financial Authority:** Client-side totals are never trusted; subtotals, GST allocations, discounts, and totals are computed atomically inside database transactions.
-  - **Non-Negative Invariant:** Invoices enforce $\text{Total} = \max(0, \text{Subtotal} + \text{Tax} - \text{Discount})$.
-
-- **📦 Product & Plan Catalog:**
-  - Hierarchical Products with multi-tier Product Variants.
-  - Flexible Plans with billing intervals (`MONTHLY`, `QUARTERLY`, `HALF_YEARLY`, `YEARLY`), trial periods, and JSON-based feature lists.
-
-- **📝 Quotations & Proposals:**
-  - Draft proposals, calculate taxes, set expiry dates.
-  - Customer self-service proposal acceptance via Customer Portal.
-  - Seamless one-click conversion from accepted quotation to active subscription.
-
-- **🔄 Strict Subscription Lifecycle State Machine:**
-  $$\text{DRAFT} \longrightarrow \text{QUOTATION} \longrightarrow \text{CONFIRMED} \longrightarrow \text{ACTIVE} \longleftrightarrow \text{PAUSED} \longrightarrow \text{CLOSED / CANCELLED}$$
-  - Normalized Monthly Recurring Revenue (MRR) and Annual Recurring Revenue (ARR) calculation.
-
-- **⚡ Automated Recurring Billing Engine:**
-  - Background billing runner (`BillingService`) queries all active subscriptions where `nextBillingDate <= now()`.
-  - Transactionally creates itemized invoices, advances billing periods, and records `BillingRun` statistics.
-  - Deduplication & idempotency check prevents duplicate invoice generation.
-  - Manual trigger endpoint (`POST /api/v1/billing/run`) for on-demand billing runs.
-
-- **💳 Append-Only Payment Ledger:**
-  - Payments are immutable and atomic.
-  - Overpayment prevention ($\text{payment} \le \text{amountDue}$).
-  - Automatic invoice status transitions (`ISSUED` $\to$ `PARTIALLY_PAID` $\to$ `PAID`).
-
-- **📊 Real-Time Financial Analytics:**
-  - Live aggregated KPIs calculated via PostgreSQL SQL queries: MRR, ARR, Active Subscriptions, Total Revenue, Outstanding Overdue.
-  - Visual charts: Revenue by Month, Subscriptions by Status, Plan Distribution, Invoices Breakdown.
-
-- **📧 Transactional Email System:**
-  - Nodemailer email service integrated with MailHog (dev) and production SMTP.
-  - HTML email templates for Welcome, Invoice Generated, Payment Receipt, and Password Reset.
-  - Full audit logging in the `EmailLog` table.
-
-- **🛡️ Immutable Audit Logging:**
-  - Append-only `AuditLog` captures Actor ID, Target Entity, Action (`CREATE`, `UPDATE`, `DELETE`, `EXECUTE`), and full JSON metadata changes.
+- 🔐 Security-first authentication and authorization
+- 💰 Financial accuracy using integer-based INR/paise calculations
+- 🔄 Reliable and idempotent recurring billing
+- 👥 Strict role-based and customer-level data isolation
+- 🧾 Transactional invoices and append-only payment records
+- 📊 Real-time financial reporting and analytics
+- 📝 Immutable audit logging
+- 📧 Transactional email delivery
+- 🧱 Modular and scalable architecture
 
 ---
 
-## 🛠 Tech Stack
+## ✨ Key Features
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Monorepo** | `pnpm` workspaces, TypeScript 5.5+ (Strict Mode), Node.js 20+ |
-| **Backend API** | NestJS 10, Prisma ORM 5.22, PostgreSQL 16+, BullMQ / Redis, Argon2, Passport-JWT, Pino Logger, Helmet, Throttler |
-| **Frontend Web** | React 18, Vite 5, TypeScript, Tailwind CSS, shadcn/ui & Radix UI primitives, TanStack Query v5, Recharts, Lucide Icons, Sonner |
-| **Shared Domain** | `@brightloop/shared` (Shared types, money utilities, state machines, enums) |
-| **Testing** | Jest 29, Vitest 2.1, React Testing Library |
+### 🔐 Enterprise Authentication
+
+- Argon2id memory-hard password hashing
+- JWT access tokens with 15-minute TTL
+- Single-use refresh token rotation
+- PostgreSQL-backed refresh token storage
+- Account lockout after 5 consecutive failed login attempts
+- 15-minute account lockout duration
+- Refresh-token replay/theft protection
+- Automatic session invalidation when an old refresh token is reused
 
 ---
 
-## 🏛 Architecture Overview
+### 👥 Role-Based Access Control
 
+Brightloop provides three primary roles:
+
+| Role | Description |
+|---|---|
+| **ADMIN** | Full system administration, staff management, billing execution, settings, analytics and audit logs |
+| **STAFF** | Operational management of customers, products, plans, quotations, subscriptions, invoices and payments |
+| **CUSTOMER** | Self-service access to their own subscriptions, invoices, quotations and payment records |
+
+Customer access is strictly isolated at the backend level. A customer cannot access another customer's financial or subscription data.
+
+---
+
+### 💰 INR-Native Financial Engine
+
+Brightloop is designed to avoid floating-point financial errors.
+
+- All monetary values are stored as integer **paise**
+- `₹1 = 100 paise`
+- Percentage rates use integer basis points
+- `18% GST = 1800 bps`
+- Server-side calculations are authoritative
+- Invoice totals are calculated inside database transactions
+- Indian currency formatting supports Lakhs and Crores
+
+Example:
+
+```text
+₹1,999.00 → 199900 paise
+₹1,25,000.00 → 12500000 paise
+18% GST → 1800 basis points
 ```
-c:\Odoo_Hackathon_Flux\
+
+Invoice totals follow:
+
+```text
+Total = max(0, Subtotal + Tax - Discount)
+```
+
+---
+
+### 📦 Product & Plan Management
+
+- Hierarchical products
+- Product variants
+- Flexible subscription plans
+- Monthly billing
+- Quarterly billing
+- Half-yearly billing
+- Annual billing
+- Trial periods
+- JSON-based plan feature definitions
+
+---
+
+### 📝 Quotations & Proposals
+
+- Create and manage quotations
+- Tax calculation
+- Discount support
+- Expiration dates
+- Customer self-service acceptance
+- One-click conversion from accepted quotation to subscription
+
+---
+
+### 🔄 Subscription Lifecycle
+
+Subscriptions follow a controlled lifecycle:
+
+```text
+DRAFT
+   ↓
+QUOTATION
+   ↓
+CONFIRMED
+   ↓
+ACTIVE
+   ↕
+PAUSED
+   ↓
+CLOSED / CANCELLED
+```
+
+The platform also calculates:
+
+- Monthly Recurring Revenue (**MRR**)
+- Annual Recurring Revenue (**ARR**)
+
+---
+
+### ⚡ Automated Recurring Billing
+
+The billing engine automatically processes subscriptions whose billing date has arrived.
+
+The billing process:
+
+1. Finds active subscriptions where `nextBillingDate <= now()`
+2. Creates itemized invoices
+3. Calculates subtotal, tax and discounts
+4. Advances the billing period
+5. Updates the next billing date
+6. Sends invoice notifications
+7. Records billing-run statistics
+8. Creates audit records
+
+Duplicate invoice generation is prevented through transaction-safe deduplication and idempotency checks.
+
+Manual billing execution is also available:
+
+```http
+POST /api/v1/billing/run
+```
+
+---
+
+### 💳 Payment Management
+
+Brightloop uses an append-only payment model.
+
+Supported payment methods include:
+
+- UPI
+- Bank Transfer
+- Card
+- Cheque
+
+Invoice payment states automatically progress through:
+
+```text
+ISSUED
+   ↓
+PARTIALLY_PAID
+   ↓
+PAID
+```
+
+Overpayments are rejected by the backend.
+
+---
+
+### 📊 Financial Analytics
+
+The reporting system provides aggregated financial KPIs including:
+
+- MRR
+- ARR
+- Active subscriptions
+- Total revenue
+- Outstanding overdue amounts
+- Revenue by month
+- Subscription status distribution
+- Plan distribution
+- Invoice breakdown
+
+---
+
+### 📧 Transactional Email
+
+Email delivery is handled through Nodemailer.
+
+Development uses **MailHog**, while production can use an SMTP provider.
+
+Available email flows include:
+
+- Welcome emails
+- Invoice generated notifications
+- Payment receipts
+- Password reset emails
+
+Email activity is recorded in the `EmailLog` table.
+
+---
+
+### 🛡️ Immutable Audit Logging
+
+Brightloop maintains an append-only audit trail.
+
+Each audit record can capture:
+
+- Actor ID
+- Target entity
+- Action
+- Metadata
+- Entity changes
+
+Supported actions include:
+
+```text
+CREATE
+UPDATE
+DELETE
+EXECUTE
+```
+
+---
+
+# 🛠 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Monorepo** | pnpm Workspaces |
+| **Language** | TypeScript 5.5+ |
+| **Runtime** | Node.js 20+ |
+| **Backend** | NestJS 10 |
+| **ORM** | Prisma 5.22 |
+| **Database** | PostgreSQL 16+ |
+| **Queue / Cache** | Redis + BullMQ |
+| **Authentication** | JWT + Passport + Argon2 |
+| **Frontend** | React 18 |
+| **Build Tool** | Vite 5 |
+| **Styling** | Tailwind CSS |
+| **UI** | shadcn/ui + Radix UI |
+| **Data Fetching** | TanStack Query v5 |
+| **Charts** | Recharts |
+| **Icons** | Lucide |
+| **Notifications** | Sonner |
+| **Email** | Nodemailer + MailHog |
+| **Backend Testing** | Jest |
+| **Frontend Testing** | Vitest + React Testing Library |
+
+---
+
+# 🏗️ Architecture
+
+Brightloop follows a modular monorepo architecture:
+
+```text
+Odoo_Hackathon_Flux/
+│
 ├── apps/
-│   ├── api/                     # NestJS REST API (Port 3000)
-│   │   ├── src/
-│   │   │   ├── audit-logs/      # Immutable system audit trail
-│   │   │   ├── auth/            # Argon2, JWT & Refresh rotation
-│   │   │   ├── billing/         # Recurring billing runner & BillingRun entity
-│   │   │   ├── common/          # SequenceService, AuditService, Filters
-│   │   │   ├── customers/       # Customer directory & isolation logic
-│   │   │   ├── discounts/       # Concurrency-safe discounts & redemptions
-│   │   │   ├── email/           # Nodemailer transactional email delivery
-│   │   │   ├── health/          # Liveness & Readiness health probes
-│   │   │   ├── invoices/        # Server-side tax & total invoice engine
-│   │   │   ├── payments/        # Transactional payment recording
-│   │   │   ├── plans/           # Subscription pricing plans
-│   │   │   ├── products/        # Products & variants catalog
-│   │   │   ├── quotations/      # Quotes, proposals & customer acceptance
-│   │   │   ├── reports/         # Real aggregated KPIs (MRR, ARR, Cashflow)
-│   │   │   ├── subscriptions/   # Subscription state machine
-│   │   │   └── taxes/           # GST/VAT basis point tax engine
-│   │   └── test/                # Jest configuration & test suites
 │   │
-│   └── web/                     # React 18 + Vite Frontend (Port 5173)
+│   ├── api/                         # NestJS REST API
+│   │   ├── src/
+│   │   │   ├── audit-logs/
+│   │   │   ├── auth/
+│   │   │   ├── billing/
+│   │   │   ├── common/
+│   │   │   ├── customers/
+│   │   │   ├── discounts/
+│   │   │   ├── email/
+│   │   │   ├── health/
+│   │   │   ├── invoices/
+│   │   │   ├── payments/
+│   │   │   ├── plans/
+│   │   │   ├── products/
+│   │   │   ├── quotations/
+│   │   │   ├── reports/
+│   │   │   ├── subscriptions/
+│   │   │   └── taxes/
+│   │   │
+│   │   └── test/
+│   │
+│   └── web/                         # React + Vite frontend
 │       ├── src/
-│       │   ├── components/      # UI primitives & App/Portal layouts
-│       │   │   ├── data/        # Generic DataPage table/card component
-│       │   │   ├── layout/      # AppLayout (Admin/Staff) & PortalLayout (Customer)
-│       │   │   └── ui/          # Button, Input, Dialog, Select, Switch, Card, etc.
-│       │   ├── hooks/           # useAuth with role helpers & session restore
-│       │   ├── lib/             # api.ts (fetch wrapper), format.ts (INR/Date)
-│       │   └── pages/           # Admin/Staff views & Customer Portal views
-│       └── dist/                # Production build artifacts
+│       │   ├── components/
+│       │   │   ├── data/
+│       │   │   ├── layout/
+│       │   │   └── ui/
+│       │   ├── hooks/
+│       │   ├── lib/
+│       │   └── pages/
+│       └── dist/
 │
 ├── packages/
-│   └── shared/                  # Shared domain types, money utils, state validators
+│   └── shared/                      # Shared domain layer
 │
 ├── prisma/
-│   ├── schema.prisma            # 20+ models, relational PostgreSQL schema
-│   └── seed.ts                  # Idempotent seed script with Argon2 passwords
+│   ├── schema.prisma
+│   └── seed.ts
 │
-└── docs/                        # Complete technical documentation
-    ├── README.md                # System overview
-    ├── ARCHITECTURE.md          # Architecture & state machine diagrams
-    ├── API.md                   # REST API documentation
-    ├── DATABASE.md              # Database schema & ER diagram
-    ├── SECURITY.md              # Security & authentication architecture
-    └── DEPLOYMENT.md            # Production deployment guide
+└── docs/
+    ├── README.md
+    ├── ARCHITECTURE.md
+    ├── API.md
+    ├── DATABASE.md
+    ├── SECURITY.md
+    └── DEPLOYMENT.md
 ```
 
 ---
 
-## 📋 Prerequisites & System Requirements
+# 📋 Prerequisites
 
-Before running the project, make sure you have the following installed:
+Before running Brightloop locally, install:
 
-1. **Node.js:** `>= 20.0.0` (Recommended: Node 20 LTS or Node 24)
-   ```bash
-   node -v
-   ```
-2. **pnpm:** `>= 9.0.0`
-   ```bash
-   npm install -g pnpm@latest
-   pnpm -v
-   ```
-3. **PostgreSQL:** `>= 16.0` (Running locally on port `5432` or via Docker)
-4. **Redis:** `>= 7.0` (Optional, for background job queueing)
-5. **Git:** Installed on machine (Note: Do not commit or push to remote)
+### Node.js
+
+```bash
+node -v
+```
+
+Required:
+
+```text
+Node.js >= 20
+```
+
+Node 20 LTS or Node 24 is recommended.
+
+### pnpm
+
+```bash
+npm install -g pnpm@latest
+pnpm -v
+```
+
+Required:
+
+```text
+pnpm >= 9
+```
+
+### PostgreSQL
+
+```text
+PostgreSQL >= 16
+```
+
+The database can run locally or through Docker.
+
+### Redis
+
+```text
+Redis >= 7
+```
+
+Redis is used for background job processing.
+
+### Git
+
+Git should be installed and available from the terminal.
 
 ---
 
-## ⚙️ Step-by-Step Installation Guide
+# 🚀 Installation
 
-### 1. Clone or Open Workspace
-Open your terminal inside the project root:
+## 1. Open the Project
+
 ```bash
 cd c:\Odoo_Hackathon_Flux
 ```
 
-### 2. Install Dependencies
-Install all workspace dependencies using `pnpm`:
+## 2. Install Dependencies
+
 ```bash
 pnpm install
 ```
 
-If pnpm prompts for approved builds for native binary modules (`argon2`, `prisma`, `esbuild`), approve them:
+If pnpm requests approval for native build scripts, approve the required packages:
+
 ```bash
 pnpm approve-builds @nestjs/core @prisma/client @prisma/engines argon2 esbuild msgpackr-extract prisma
 ```
 
 ---
 
-## 🔑 Environment Variables Configuration
+# 🔑 Environment Configuration
 
-Copy `.env.example` to create `.env` in the project root:
+Create the local environment file:
+
 ```bash
 cp .env.example .env
 ```
 
-Verify or configure the following environment parameters in `.env`:
+Then configure the required variables:
 
 ```env
-# ===================================================
-# SERVER CONFIGURATION
-# ===================================================
+# Server
 NODE_ENV=development
 PORT=3000
 API_PREFIX=api/v1
 CORS_ORIGIN=http://localhost:5173
 
-# ===================================================
-# POSTGRESQL DATABASE (PRISMA)
-# ===================================================
+# PostgreSQL
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/brightloop?schema=public"
 
-# ===================================================
-# JWT AUTHENTICATION
-# ===================================================
+# JWT
 JWT_SECRET="brightloop-super-secret-jwt-key-production-grade-2026"
 JWT_EXPIRES_IN="15m"
+
 JWT_REFRESH_SECRET="brightloop-super-secret-refresh-key-production-grade-2026"
 JWT_REFRESH_EXPIRES_IN="7d"
 
-# ===================================================
-# REDIS / BULLMQ
-# ===================================================
+# Redis
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
-# ===================================================
-# EMAIL / SMTP (MAILHOG FOR DEVELOPMENT)
-# ===================================================
+# SMTP / MailHog
 SMTP_HOST=localhost
 SMTP_PORT=1025
 SMTP_USER=
 SMTP_PASS=
 SMTP_FROM="Brightloop <no-reply@brightloop.in>"
 
-# ===================================================
-# LOCALE SETTINGS
-# ===================================================
+# Locale
 DEFAULT_CURRENCY=INR
 DEFAULT_TIMEZONE=Asia/Kolkata
 ```
 
+> ⚠️ **Production:** Replace development secrets with secure environment-specific values before deployment.
+
 ---
 
-## 🗄️ Database Setup, Migration & Seeding
+# 🗄️ Database Setup
 
-### 1. Generate Prisma Client
-Generates the typed Prisma Client for database access:
+## Generate Prisma Client
+
 ```bash
 pnpm db:generate
 ```
 
-### 2. Push Schema to PostgreSQL
-Synchronize the PostgreSQL database with the Prisma schema:
+## Apply Database Schema
+
 ```bash
 pnpm db:push
 ```
 
-### 3. Seed Database with Realistic Indian SaaS Data
-Populate the database with demo users, products, variants, plans, taxes, discounts, 10 customers, 8 active subscriptions, historical invoices, and payments:
+## Seed Demo Data
+
 ```bash
 pnpm db:seed
 ```
 
-> **What the seed script creates:**
-> - **3 Demo Users** (Admin, Staff, Customer) with Argon2-encrypted passwords.
-> - **3 Products:** CRM Suite, ERP Cloud, HRMS Pro with variants.
-> - **6 Pricing Plans:** Basic, Pro, Enterprise tiers across Monthly & Annual intervals.
-> - **3 Tax Rates:** GST 18%, GST 12%, GST 5%.
-> - **3 Discounts:** `EARLY20` (20% off), `FLAT1000` (₹1,000 off), `DIWALI15` (15% off).
-> - **10 Indian Corporate Customers** with GSTIN numbers and physical addresses.
-> - **8 Subscriptions** with active recurring billing cycles, invoices, and payments.
+The seed process creates demo data including:
+
+- 3 users
+- 3 products
+- Product variants
+- 6 pricing plans
+- 3 GST rates
+- 3 discounts
+- 10 Indian corporate customers
+- 8 active subscriptions
+- Historical invoices
+- Payment records
 
 ---
 
-## 💻 How to Run the Application
+# ▶️ Running the Application
 
-### Option A: Run Both Frontend & Backend Concurrently (Recommended)
+## Recommended: Run Everything Together
+
 ```bash
 pnpm dev
 ```
-This runs both `@brightloop/api` on port `3000` and `@brightloop/web` on port `5173` simultaneously.
 
-### Option B: Run in Separate Terminals
+This starts:
 
-#### Terminal 1 — Start NestJS Backend API:
+```text
+Backend API      → http://localhost:3000
+Frontend         → http://localhost:5173
+```
+
+---
+
+## Run Backend Separately
+
 ```bash
 pnpm dev:api
 ```
-- API Base URL: `http://localhost:3000/api/v1`
-- Swagger Interactive Docs: `http://localhost:3000/api/docs`
-- Health Check Probe: `http://localhost:3000/api/v1/health`
 
-#### Terminal 2 — Start React Web Frontend:
+Backend:
+
+```text
+http://localhost:3000/api/v1
+```
+
+Swagger:
+
+```text
+http://localhost:3000/api/docs
+```
+
+Health Check:
+
+```text
+http://localhost:3000/api/v1/health
+```
+
+---
+
+## Run Frontend Separately
+
 ```bash
 pnpm dev:web
 ```
-- Web Application: `http://localhost:5173`
+
+Frontend:
+
+```text
+http://localhost:5173
+```
 
 ---
 
-## 👤 Pre-configured Demo Accounts & Credentials
+# 👤 Demo Accounts
 
-The seed data sets up three functional roles. You can log in using any of them at [http://localhost:5173/login](http://localhost:5173/login):
+After running the seed command, the following demo accounts are available:
 
-| Role | Email | Password | Allowed Access & Dashboard |
-| :--- | :--- | :--- | :--- |
-| **ADMIN** | `admin@brightloop.in` | `Admin@123` | Full access to `/app/*`. Can manage staff, customers, billing cycle runner, system settings, audit logs, and analytics. |
-| **STAFF** | `staff@brightloop.in` | `Staff@123` | Access to operational management: customers, products, plans, quotes, subscriptions, invoices, and payments. |
-| **CUSTOMER** | `customer@brightloop.in` | `Customer@123` | Directs to `/portal/*`. Customer self-service portal: view own active subscriptions, download invoices, view payment receipts, accept quotes. |
+| Role | Email | Password | Access |
+|---|---|---|---|
+| **ADMIN** | `admin@brightloop.in` | `Admin@123` | Full administrative access |
+| **STAFF** | `staff@brightloop.in` | `Staff@123` | Operational management |
+| **CUSTOMER** | `customer@brightloop.in` | `Customer@123` | Customer self-service portal |
 
----
+Login:
 
-## 🔄 End-to-End System Workflows
+```text
+http://localhost:5173/login
+```
 
-### Workflow 1: Customer Onboarding & Subscription Creation
-1. Sign in as **Admin** or **Staff**.
-2. Navigate to **Customers** (`/app/customers`) $\to$ Click **Add Customer** $\to$ Fill in Contact Name, Company, Email, Phone, and GSTIN.
-3. Navigate to **Subscriptions** (`/app/subscriptions`) $\to$ Click **New Subscription**.
-4. Select the customer, pick a billing interval (`MONTHLY`, `QUARTERLY`, `YEARLY`), add plan line items, and submit.
-5. The subscription starts in `ACTIVE` state with next billing date automatically computed.
-
-### Workflow 2: Automated Recurring Billing Run
-1. Go to **Settings** or trigger the billing API endpoint:
-   ```bash
-   POST http://localhost:3000/api/v1/billing/run
-   Authorization: Bearer <ADMIN_JWT>
-   ```
-2. The billing engine queries all active subscriptions due for renewal (`nextBillingDate <= now`).
-3. For each due subscription, it atomically:
-   - Generates an itemized `Invoice` with computed subtotal and GST.
-   - Advances `currentPeriodStart`, `currentPeriodEnd`, and `nextBillingDate`.
-   - Sends an invoice email notification to the customer.
-   - Logs execution results in `BillingRun` and `AuditLog`.
-
-### Workflow 3: Recording Payments
-1. Navigate to **Invoices** (`/app/invoices`) to view outstanding amounts.
-2. Navigate to **Payments** (`/app/payments`) $\to$ Click **Record Payment**.
-3. Select the unpaid invoice $\to$ the dialog automatically displays the outstanding due amount.
-4. Enter the amount paid, payment method (`UPI`, `BANK_TRANSFER`, `CARD`, `CHEQUE`), transaction reference ID, and submit.
-5. The system atomically deducts the amount from invoice `amountDuePaise`. If fully paid, the invoice status changes to `PAID`. Overpayment is strictly prevented.
-
-### Workflow 4: Customer Self-Service Portal
-1. Log in with `customer@brightloop.in` / `Customer@123`.
-2. The user is redirected to `/portal/dashboard`.
-3. View active subscription plans, renewal dates, outstanding balances, and recent invoices.
-4. Switch to **My Invoices** (`/portal/invoices`) or **My Payments** (`/portal/payments`) for full transparency.
-5. Backend verifies customer ownership on every query—customer cannot view other companies' financial data.
+> ⚠️ These credentials are intended for local/demo environments only.
 
 ---
 
-## 🧮 Financial Calculation & Money Rules
+# 🔄 Core Workflows
 
-To prevent financial rounding errors common in JavaScript applications:
+## 1. Customer → Subscription
 
-1. **Integer Minor Units:** All database fields storing money are integers representing **paise** ($1\text{ Rupee} = 100\text{ paise}$):
-   - Example: ₹1,999.00 is stored as `199900`.
-   - Example: ₹1,25,000.00 is stored as `12500000`.
-2. **Basis Points for Percentage:**
-   - 18% GST is represented as `1800` basis points.
-   - Formula: $\text{taxPaise} = \text{round}\left(\frac{\text{subtotalPaise} \times \text{taxRate}}{10000}\right)$.
-3. **Format Utilities:**
-   - `formatINR(paise)` formats to Indian numbering (`₹1,25,000.00`).
-   - `formatShort(paise)` formats to compact abbreviations (`₹50.0K`, `₹5.0L`, `₹2.0Cr`).
-
----
-
-## 📖 API Documentation & Swagger
-
-When the backend API is running (`pnpm dev:api`), interactive Swagger documentation is available at:
-
-👉 **[http://localhost:3000/api/docs](http://localhost:3000/api/docs)**
-
-From Swagger, you can test every REST API endpoint, inspect request schemas, review parameter validation, and execute authenticated requests using Bearer JWT tokens.
-
-### Key API Endpoints Summary:
-- **Auth:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/profile`
-- **Customers:** `GET /api/v1/customers`, `POST /api/v1/customers`, `PUT /api/v1/customers/:id`
-- **Products & Plans:** `GET /api/v1/products`, `GET /api/v1/plans`, `POST /api/v1/plans`
-- **Taxes & Discounts:** `GET /api/v1/taxes`, `GET /api/v1/discounts`, `POST /api/v1/discounts`
-- **Quotations:** `GET /api/v1/quotations`, `POST /api/v1/quotations`, `POST /api/v1/quotations/:id/accept`
-- **Subscriptions:** `GET /api/v1/subscriptions`, `POST /api/v1/subscriptions`, `PUT /api/v1/subscriptions/:id/status`
-- **Invoices & Billing:** `GET /api/v1/invoices`, `POST /api/v1/billing/run`, `GET /api/v1/billing/runs`
-- **Payments:** `GET /api/v1/payments`, `POST /api/v1/payments`
-- **Reports:** `GET /api/v1/reports/dashboard`, `GET /api/v1/reports/revenue-by-month`
-- **Audit Logs:** `GET /api/v1/audit-logs`
-- **Health:** `GET /api/v1/health`
+```text
+Create Customer
+      ↓
+Select Product / Plan
+      ↓
+Create Subscription
+      ↓
+Subscription becomes ACTIVE
+      ↓
+Next Billing Date calculated
+```
 
 ---
 
-## 🧪 Running Tests & Quality Checks
+## 2. Recurring Billing
 
-Brightloop includes a comprehensive test suite across backend and frontend:
+```text
+Scheduled / Manual Billing Run
+            ↓
+Find Due Subscriptions
+            ↓
+Generate Invoice
+            ↓
+Calculate Tax & Discount
+            ↓
+Advance Billing Period
+            ↓
+Send Email
+            ↓
+Create BillingRun + AuditLog
+```
 
-### Run All Tests Across Workspace:
+Manual execution:
+
+```http
+POST /api/v1/billing/run
+Authorization: Bearer <ADMIN_JWT>
+```
+
+---
+
+## 3. Payment Processing
+
+```text
+Outstanding Invoice
+        ↓
+Record Payment
+        ↓
+Validate Amount
+        ↓
+Prevent Overpayment
+        ↓
+Update Invoice Balance
+        ↓
+PARTIALLY_PAID / PAID
+```
+
+---
+
+## 4. Customer Portal
+
+Customers can:
+
+- View active subscriptions
+- View renewal dates
+- View outstanding balances
+- View invoices
+- View payment receipts
+- Accept quotations
+
+Every customer-facing query is protected by backend ownership checks.
+
+---
+
+# 💰 Financial Rules
+
+Brightloop deliberately avoids JavaScript floating-point arithmetic for financial calculations.
+
+### Monetary Values
+
+All database money values are stored in paise:
+
+```text
+₹1,999.00
+     ↓
+199900 paise
+```
+
+### Tax Rates
+
+Tax rates use basis points:
+
+```text
+18%
+ ↓
+1800 bps
+```
+
+Tax calculation:
+
+```text
+taxPaise =
+round((subtotalPaise × taxRate) / 10000)
+```
+
+### Currency Formatting
+
+```text
+formatINR(paise)
+```
+
+Examples:
+
+```text
+₹1,25,000.00
+₹1,00,00,000.00
+```
+
+Compact formatting is also supported:
+
+```text
+₹50.0K
+₹5.0L
+₹2.0Cr
+```
+
+---
+
+# 📖 API Documentation
+
+Once the backend is running, open Swagger:
+
+```text
+http://localhost:3000/api/docs
+```
+
+Swagger provides:
+
+- Interactive API documentation
+- Request schemas
+- Validation rules
+- Authentication
+- Endpoint testing
+- Bearer JWT authorization
+
+### Main API Areas
+
+| Module | Example |
+|---|---|
+| **Auth** | `/api/v1/auth/*` |
+| **Customers** | `/api/v1/customers/*` |
+| **Products** | `/api/v1/products/*` |
+| **Plans** | `/api/v1/plans/*` |
+| **Taxes** | `/api/v1/taxes/*` |
+| **Discounts** | `/api/v1/discounts/*` |
+| **Quotations** | `/api/v1/quotations/*` |
+| **Subscriptions** | `/api/v1/subscriptions/*` |
+| **Invoices** | `/api/v1/invoices/*` |
+| **Billing** | `/api/v1/billing/*` |
+| **Payments** | `/api/v1/payments/*` |
+| **Reports** | `/api/v1/reports/*` |
+| **Audit Logs** | `/api/v1/audit-logs/*` |
+| **Health** | `/api/v1/health` |
+
+---
+
+# 🧪 Testing & Quality
+
+## Run All Tests
+
 ```bash
 pnpm test
 ```
 
-### Run Backend Jest Tests Only:
+## Backend Tests
+
 ```bash
 pnpm --filter @brightloop/api test
 ```
-*Tests financial precision, basis points, invoice calculation, and state machine transitions.*
 
-### Run Frontend Vitest Tests Only:
+Backend tests cover areas such as:
+
+- Financial calculations
+- Basis-point calculations
+- Invoice logic
+- Subscription state transitions
+
+## Frontend Tests
+
 ```bash
 pnpm --filter @brightloop/web test
 ```
-*Tests INR formatting, compact currency abbreviations, date localization, and UI badge mappings.*
 
-### TypeScript Strict Typecheck:
+Frontend tests cover:
+
+- INR formatting
+- Compact currency formatting
+- Date localization
+- UI state mappings
+
+## TypeScript Validation
+
 ```bash
 pnpm typecheck
 ```
-*Executes `tsc --noEmit` across all workspace packages.*
 
-### Production Build:
+## Production Build
+
 ```bash
 pnpm build
 ```
-*Builds NestJS into `apps/api/dist` and Vite frontend into `apps/web/dist`.*
+
+Build outputs:
+
+```text
+apps/api/dist
+apps/web/dist
+```
 
 ---
 
-## ❓ Troubleshooting & FAQ
+# 🔍 Database Inspection
 
-### Q1: `pnpm approve-builds` error when installing
-If you see `ERR_PNPM_IGNORED_BUILDS` during installation, run:
+Use Prisma Studio to inspect database records:
+
+```bash
+pnpm db:studio
+```
+
+Prisma Studio:
+
+```text
+http://localhost:5555
+```
+
+---
+
+# 📧 Local Email Testing
+
+During development, email is routed through MailHog.
+
+SMTP:
+
+```text
+localhost:1025
+```
+
+MailHog dashboard:
+
+```text
+http://localhost:8025
+```
+
+Email records are also stored in:
+
+```text
+email_logs
+```
+
+---
+
+# ❓ Troubleshooting
+
+### `ERR_PNPM_IGNORED_BUILDS`
+
+Run:
+
 ```bash
 pnpm approve-builds @nestjs/core @prisma/client @prisma/engines argon2 esbuild msgpackr-extract prisma
 ```
 
-### Q2: Port 3000 or 5173 is already in use
-You can specify a different port in `.env` for the API (`PORT=3001`) or run Vite on another port:
+---
+
+### Port 3000 Already in Use
+
+Change the API port in `.env`:
+
+```env
+PORT=3001
+```
+
+---
+
+### Port 5173 Already in Use
+
+Run Vite on another port:
+
 ```bash
 pnpm --filter @brightloop/web dev -- --port 5174
 ```
 
-### Q3: How do I inspect database records visually?
-Launch the built-in Prisma Studio interface:
+---
+
+### Inspect Database
+
 ```bash
 pnpm db:studio
 ```
-Prisma Studio opens at `http://localhost:5555` to browse and inspect database tables.
 
-### Q4: Are background emails captured locally?
-Yes! In local development, emails are routed via SMTP to MailHog on port `1025`. You can inspect sent emails in MailHog's web dashboard at `http://localhost:8025` or check the database table `email_logs`.
+Then open:
 
----
-
-## ⚠️ Important Note on Version Control
-
-> [!WARNING]
-> In accordance with project instructions: **No commits are made to Git or pushed to GitHub.** All files, schemas, and configurations remain purely local in your workspace.
+```text
+http://localhost:5555
+```
 
 ---
 
-**Brightloop Technologies Pvt. Ltd.** · Enterprise Subscription Management System
+# 📚 Documentation
+
+Additional technical documentation is available under `docs/`:
+
+```text
+docs/
+├── README.md
+├── ARCHITECTURE.md
+├── API.md
+├── DATABASE.md
+├── SECURITY.md
+└── DEPLOYMENT.md
+```
+
+---
+
+# 🔐 Security Principles
+
+Brightloop follows several security-focused design principles:
+
+- Argon2id password hashing
+- JWT authentication
+- Refresh token rotation
+- Account lockout
+- Token replay protection
+- Role-based authorization
+- Customer ownership validation
+- Server-side financial calculations
+- Transactional database operations
+- Append-only audit logging
+- HTTP security middleware
+- Request throttling
+
+---
+
+# 🧱 Design Principles
+
+The platform is built around:
+
+### Security
+
+Protect identities, sessions and customer data.
+
+### Financial Integrity
+
+Never rely on floating-point arithmetic for monetary values.
+
+### Consistency
+
+Use database transactions for operations that must remain atomic.
+
+### Idempotency
+
+Prevent duplicate billing operations.
+
+### Isolation
+
+Ensure customers can only access their own data.
+
+### Observability
+
+Maintain health checks, audit logs, billing-run records and email logs.
+
+### Modularity
+
+Keep business domains separated into independently maintainable modules.
+
+---
+
+# 📌 Project Status
+
+Brightloop currently provides the core functionality required for an enterprise subscription and recurring billing platform, including:
+
+- Authentication & authorization
+- Customer management
+- Product and plan management
+- Quotations
+- Subscription lifecycle management
+- Recurring billing
+- Invoicing
+- Payments
+- Financial reporting
+- Transactional email
+- Audit logging
+- Customer self-service portal
+- Automated testing
+- Swagger API documentation
+
+---
+
+# ⚠️ Development Note
+
+This repository is intended for development and project evaluation purposes.
+
+Before production deployment:
+
+- Replace all development secrets
+- Configure production PostgreSQL
+- Configure production Redis
+- Configure production SMTP
+- Review CORS configuration
+- Configure secure JWT secrets
+- Review environment variables
+- Run the complete test suite
+- Run the production build
+- Review the deployment documentation
+
+---
+
+## 🏢 Brightloop
+
+**Enterprise Subscription Management & Recurring Billing System**
+
+Built with:
+
+```text
+NestJS • React • TypeScript • PostgreSQL • Prisma
+Redis • BullMQ • Tailwind CSS • Vite
+```
+
+---
